@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Studytracker</string>
+    <string name="title_activity_main">Studytracker</string>
+    <string name="package_name">com.yourdomain.studytracker</string>
+    <string name="custom_url_scheme">com.yourdomain.studytracker</string>
+</resources>
