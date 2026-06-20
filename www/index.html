@@ -1,4 +1,4 @@
-<meta name='viewport' content='width=device-width, initial-scale=1'/><!DOCTYPE html>
+<meta name='viewport' content='width=device-width, initial-scale=1'/><meta name='viewport' content='width=device-width, initial-scale=1'/><!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -178,9 +178,10 @@ label.field-label{font-size:12px; font-weight:700; color:var(--text-dim); margin
 @keyframes fall{to{transform:translateY(110vh) rotate(540deg); opacity:.2;}}
 
 /* ===================== TOAST ===================== */
-.toast{position:fixed; bottom:90px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--text); color:var(--bg); padding:11px 18px; border-radius:999px; font-size:13px; font-weight:700; opacity:0; pointer-events:none; transition:.3s; z-index:300; box-shadow:var(--shadow-lg); white-space:nowrap; max-width:90vw; overflow:hidden; text-overflow:ellipsis;}
+.toast{position:fixed; bottom:90px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--text); color:var(--bg); padding:11px 18px; border-radius:999px; font-size:13px; font-weight:700; opacity:0; pointer-events:none; transition:.3s; z-index:300; box-shadow:var(--shadow-lg); white-space:nowrap; max-width:90vw; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:10px;}
 [data-theme="dark"] .toast{background:#fff; color:#0e0f16;}
-.toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto;}
+.toast-undo{background:none; border:none; color:inherit; font-weight:800; text-decoration:underline; font-size:13px; padding:0; flex-shrink:0;}
 
 /* ===================== BOTTOM NAV ===================== */
 .bottom-nav{position:fixed; bottom:0; left:0; right:0; background:var(--bg-elev); border-top:1px solid var(--border); display:flex; justify-content:space-around; padding:6px 4px calc(6px + env(safe-area-inset-bottom)); z-index:100;}
@@ -532,6 +533,7 @@ label.field-label{font-size:12px; font-weight:700; color:var(--text-dim); margin
         <input class="field" type="number" id="testMaxMarksInput" min="1" placeholder="Max marks" value="100">
       </div>
       <input class="field" type="date" id="testDateInput">
+      <input class="field" type="text" id="testTagsInput" placeholder="Weak-area tags, comma separated e.g. Ind AS 115, Costing">
       <textarea class="field" id="testNotesInput" placeholder="Notes -- weak areas, mistakes etc."></textarea>
       <button class="btn btn-primary btn-block" id="btnAddTest">+ Add Test Record</button>
     </div>
@@ -687,6 +689,38 @@ label.field-label{font-size:12px; font-weight:700; color:var(--text-dim); margin
   </div>
 </div>
 
+<!-- ===================== MANAGE CHAPTERS MODAL ===================== -->
+<div class="modal-overlay" id="manageChaptersModal">
+  <div class="modal">
+    <div class="modal-head"><h3 id="chaptersModalTitle">Chapters</h3><button class="icon-btn" data-close-modal="manageChaptersModal">✕</button></div>
+    <div class="progress-meta" id="chaptersModalProgressMeta" style="margin-bottom:6px;"><span>0/0 covered</span><span>0%</span></div>
+    <div class="progress-track thin" style="margin-bottom:14px;"><div class="progress-fill" id="chaptersModalProgressFill" style="width:0%"></div></div>
+    <div id="chaptersModalList" style="margin-bottom:14px;"><div class="empty-state">No chapters added yet</div></div>
+    <div style="display:flex; gap:8px;">
+      <input class="field" type="text" id="addChapterInput" placeholder="Add a chapter / topic" style="margin-bottom:0;">
+      <button class="btn btn-primary btn-sm" id="btnAddChapter" style="flex:none;">+ Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== LOG SESSION MODAL ===================== -->
+<div class="modal-overlay" id="logSessionModal">
+  <div class="modal">
+    <div class="modal-head"><h3>Log Session</h3></div>
+    <div class="text-faint" id="logSessionSummary" style="margin-bottom:14px; font-weight:700;">--</div>
+    <label class="field-label">Session Notes</label>
+    <textarea class="field" id="logSessionNotesInput" placeholder="What did you cover?"></textarea>
+    <label class="field-label">Difficulty (1–5)</label>
+    <div class="rating-row" id="logSessionDifficultyRow"></div>
+    <label class="field-label">Productivity (1–5)</label>
+    <div class="rating-row" id="logSessionProductivityRow"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" id="btnDiscardSession">Discard</button>
+      <button class="btn btn-primary" id="btnSaveSession">Save Session</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== EOD SUMMARY MODAL ===================== -->
 <div class="modal-overlay" id="eodModal">
   <div class="modal">
@@ -696,7 +730,7 @@ label.field-label{font-size:12px; font-weight:700; color:var(--text-dim); margin
 </div>
 
 <!-- ===================== TOAST ===================== -->
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast"><span id="toastMsg"></span><button class="toast-undo" id="toastUndoBtn" style="display:none;">Undo</button></div>
 
 <script>
 /* =====================================================================
@@ -715,12 +749,12 @@ label.field-label{font-size:12px; font-weight:700; color:var(--text-dim); margin
 const STORE_KEY = 'ca_final_command_center_v1';
 
 const DEFAULT_SUBJECTS = [
-  { id:'fr',  name:'Financial Reporting (FR)', group:'Group 1', color:'#3b4ce0', custom:false },
-  { id:'afm', name:'Advanced Financial Management (AFM)', group:'Group 1', color:'#16915c', custom:false },
-  { id:'audit', name:'Advanced Auditing, Assurance & Professional Ethics', group:'Group 1', color:'#c2710a', custom:false },
-  { id:'dt',  name:'Direct Tax Laws & International Taxation (DT)', group:'Group 1', color:'#d23f4d', custom:false },
-  { id:'idt', name:'Indirect Tax Laws (IDT)', group:'Group 2', color:'#8b5cf6', custom:false },
-  { id:'ibs', name:'Integrated Business Solutions (IBS)', group:'Group 2', color:'#0891b2', custom:false }
+  { id:'fr',  name:'Financial Reporting (FR)', group:'Group 1', color:'#3b4ce0', custom:false, chapters:[] },
+  { id:'afm', name:'Advanced Financial Management (AFM)', group:'Group 1', color:'#16915c', custom:false, chapters:[] },
+  { id:'audit', name:'Advanced Auditing, Assurance & Professional Ethics', group:'Group 1', color:'#c2710a', custom:false, chapters:[] },
+  { id:'dt',  name:'Direct Tax Laws & International Taxation (DT)', group:'Group 1', color:'#d23f4d', custom:false, chapters:[] },
+  { id:'idt', name:'Indirect Tax Laws (IDT)', group:'Group 2', color:'#8b5cf6', custom:false, chapters:[] },
+  { id:'ibs', name:'Integrated Business Solutions (IBS)', group:'Group 2', color:'#0891b2', custom:false, chapters:[] }
 ];
 
 const SUBJECT_COLORS = ['#3b4ce0','#16915c','#c2710a','#d23f4d','#8b5cf6','#0891b2','#be185d','#65a30d','#b8860b'];
@@ -793,6 +827,7 @@ function loadData(){
     const base = defaultData();
     return {
       ...base, ...parsed,
+      subjects: (parsed.subjects||base.subjects).map(s=>({ chapters:[], ...s })),
       settings: {...base.settings, ...(parsed.settings||{})},
       streaks: {...base.streaks, ...(parsed.streaks||{})}
     };
@@ -807,18 +842,28 @@ function todayStr(d=new Date()){ return d.toISOString().slice(0,10); }
 function fmtHours(h){ return (Math.round(h*100)/100).toFixed(1); }
 function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
 function subjectById(id){ return DB.subjects.find(s=>s.id===id); }
-function subjectName(id){ const s=subjectById(id); return s? s.name : 'Unknown'; }
+function subjectNameRaw(id){ const s=subjectById(id); return s? s.name : 'Unknown'; }
+function subjectName(id){ return escapeHtml(subjectNameRaw(id)); }
 function subjectColor(id){ const s=subjectById(id); return s? s.color : '#999'; }
 function dateRangeArray(n){ const arr=[]; for(let i=n-1;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); arr.push(todayStr(d)); } return arr; }
 function hoursOnDate(ds){ return DB.sessions.filter(s=>s.date===ds).reduce((a,b)=>a+b.hours,0); }
 function sessionsOnDate(ds){ return DB.sessions.filter(s=>s.date===ds); }
 function escapeHtml(str){ const div=document.createElement('div'); div.textContent = str ?? ''; return div.innerHTML; }
 
-function showToast(msg){
+function showToast(msg, undoFn){
   const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
+  document.getElementById('toastMsg').textContent = msg;
+  const undoBtn = document.getElementById('toastUndoBtn');
+  if(undoFn){
+    undoBtn.style.display='inline';
+    undoBtn.onclick = ()=>{ t.classList.remove('show'); clearTimeout(window._toastTimer); undoFn(); };
+  } else {
+    undoBtn.style.display='none';
+    undoBtn.onclick = null;
+  }
+  t.classList.add('show');
   clearTimeout(window._toastTimer);
-  window._toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
+  window._toastTimer = setTimeout(()=>t.classList.remove('show'), undoFn ? 4500 : 2400);
 }
 function openModal(id){ document.getElementById(id).classList.add('show'); }
 function closeModal(id){ document.getElementById(id).classList.remove('show'); }
@@ -981,7 +1026,7 @@ function renderRevisionSnapshot(){
 
 /* ---------------------- 4. TIMER ENGINE ---------------------- */
 const Timer = {
-  seconds:0, running:false, paused:false, interval:null, startedAt:null, breakReminderInterval:null,
+  seconds:0, running:false, paused:false, interval:null, startedAt:null, breakReminderInterval:null, pendingSession:null,
   start(){
     const subjectId = document.getElementById('sessionSubjectSelect').value;
     if(!subjectId){ showToast('Select a subject first'); return; }
@@ -996,15 +1041,22 @@ const Timer = {
   resume(){ this.start(); },
   stop(){
     clearInterval(this.interval); this.disarmBreakReminder();
+    this.running=false; this.paused=false;
     const hours = this.seconds/3600;
     if(hours>0.003){
       const subjectId = document.getElementById('sessionSubjectSelect').value;
       const notes = document.getElementById('sessionNotesInput').value.trim();
-      logSession(subjectId, hours, notes, todayStr(), 3, 3, this.startedAt, new Date().toISOString());
-      showToast(`Session saved: ${fmtHours(hours)}h logged`);
+      this.pendingSession = { subjectId, hours, notes, startedAt:this.startedAt, endedAt:new Date().toISOString() };
+      openLogSessionModal();
+    } else {
+      this.resetAfterStop();
     }
-    this.seconds=0; this.running=false; this.paused=false; this.startedAt=null;
+    this.updateUI();
+  },
+  resetAfterStop(){
+    this.seconds=0; this.startedAt=null; this.pendingSession=null;
     document.getElementById('sessionNotesInput').value='';
+    document.getElementById('timerDisplay').textContent = '00:00:00';
     this.updateUI();
   },
   tick(){
@@ -1024,7 +1076,7 @@ const Timer = {
     else if(this.paused){ badge.className='timer-status paused'; text.textContent='Paused'; dotEl.classList.remove('pulse'); }
     else { badge.className='timer-status'; text.textContent='Idle'; dotEl.classList.remove('pulse'); }
     const sub = document.getElementById('sessionSubjectSelect').value;
-    document.getElementById('timerSubjectLabel').textContent = sub ? `Studying: ${subjectName(sub)}` : 'Select a subject to begin';
+    document.getElementById('timerSubjectLabel').textContent = sub ? `Studying: ${subjectNameRaw(sub)}` : 'Select a subject to begin';
   },
   armBreakReminder(){
     if(!DB.settings.remindersBreak.on) return;
@@ -1047,6 +1099,33 @@ function logSession(subjectId, hours, notes, date, difficulty, productivity, sta
   saveData();
   renderAll();
 }
+
+/* ----- Log Session modal (shown after Stop) ----- */
+let logSessionDifficulty = 3, logSessionProductivity = 3;
+function openLogSessionModal(){
+  const p = Timer.pendingSession; if(!p) return;
+  document.getElementById('logSessionSummary').textContent = `${subjectNameRaw(p.subjectId)} · ${fmtHours(p.hours)}h studied`;
+  document.getElementById('logSessionNotesInput').value = p.notes || '';
+  logSessionDifficulty = 3; logSessionProductivity = 3;
+  buildRatingRow('logSessionDifficultyRow', logSessionDifficulty, v=>logSessionDifficulty=v);
+  buildRatingRow('logSessionProductivityRow', logSessionProductivity, v=>logSessionProductivity=v);
+  openModal('logSessionModal');
+}
+function discardPendingSession(){
+  Timer.resetAfterStop();
+  closeModal('logSessionModal');
+  showToast('Session discarded');
+}
+document.getElementById('btnSaveSession').addEventListener('click', ()=>{
+  const p = Timer.pendingSession; if(!p){ closeModal('logSessionModal'); return; }
+  const notes = document.getElementById('logSessionNotesInput').value.trim();
+  logSession(p.subjectId, p.hours, notes, todayStr(), logSessionDifficulty, logSessionProductivity, p.startedAt, p.endedAt);
+  closeModal('logSessionModal');
+  showToast(`Session saved: ${fmtHours(p.hours)}h logged`);
+  Timer.resetAfterStop();
+});
+document.getElementById('btnDiscardSession').addEventListener('click', discardPendingSession);
+
 document.getElementById('btnManualAdd').addEventListener('click', ()=>{
   const subjectId = document.getElementById('manualSubjectSelect').value;
   const hours = parseFloat(document.getElementById('manualHoursInput').value);
@@ -1105,7 +1184,7 @@ document.getElementById('btnAddSubject').addEventListener('click', ()=>{
   const name = document.getElementById('newSubjectName').value.trim();
   const group = document.getElementById('newSubjectGroup').value;
   if(!name){ showToast('Enter a subject name'); return; }
-  DB.subjects.push({ id:uid('subj'), name, group, color:newSubjectColor, custom:true });
+  DB.subjects.push({ id:uid('subj'), name, group, color:newSubjectColor, custom:true, chapters:[] });
   saveData(); document.getElementById('newSubjectName').value='';
   renderAll(); showToast('Subject added');
 });
@@ -1121,12 +1200,16 @@ function renderSubjectsList(){
     html += `<div class="group-label">${g}</div>`;
     html += subs.map(s=>{
       const hrs = DB.sessions.filter(x=>x.subjectId===s.id).reduce((a,b)=>a+b.hours,0);
+      const chapters = s.chapters||[];
+      const doneCount = chapters.filter(c=>c.done).length;
+      const chapterLabel = chapters.length ? ` · ${doneCount}/${chapters.length} chapters covered` : '';
       return `<div class="list-row">
         <div class="row-main">
           <div class="row-title"><span class="swatch" style="background:${s.color}"></span>${escapeHtml(s.name)}</div>
-          <div class="row-sub">${fmtHours(hrs)}h logged total</div>
+          <div class="row-sub">${fmtHours(hrs)}h logged total${chapterLabel}</div>
         </div>
         <div class="row-actions">
+          <button class="btn btn-ghost btn-sm" data-manage-chapters="${s.id}">Chapters</button>
           <button class="btn btn-ghost btn-sm" data-edit-subject="${s.id}">Edit</button>
           ${s.custom ? `<button class="btn btn-ghost btn-sm" data-del-subject="${s.id}">Delete</button>` : ''}
         </div>
@@ -1159,6 +1242,47 @@ function deleteSubject(id){
   DB.subjects = DB.subjects.filter(x=>x.id!==id);
   saveData(); renderAll(); showToast('Subject deleted');
 }
+
+/* ----- Chapter checklist (per subject) ----- */
+let manageChaptersSubjectId = null;
+function openManageChapters(id){
+  manageChaptersSubjectId = id;
+  renderChaptersModal();
+  document.getElementById('addChapterInput').value='';
+  openModal('manageChaptersModal');
+}
+function renderChaptersModal(){
+  const s = subjectById(manageChaptersSubjectId);
+  if(!s) return;
+  document.getElementById('chaptersModalTitle').textContent = `${s.name} -- Chapters`;
+  const chapters = s.chapters||[];
+  const done = chapters.filter(c=>c.done).length;
+  const total = chapters.length;
+  const pct = total ? Math.round((done/total)*100) : 0;
+  document.getElementById('chaptersModalProgressMeta').innerHTML = `<span>${done}/${total} covered</span><span>${pct}%</span>`;
+  document.getElementById('chaptersModalProgressFill').style.width = pct+'%';
+  document.getElementById('chaptersModalProgressFill').classList.toggle('complete', pct>=100 && total>0);
+  const listEl = document.getElementById('chaptersModalList');
+  listEl.innerHTML = chapters.length ? chapters.map(c=>`
+    <div class="list-row">
+      <div class="row-main">
+        <div class="row-title" style="${c.done?'text-decoration:line-through; color:var(--text-faint);':''}">${escapeHtml(c.name)}</div>
+      </div>
+      <div class="row-actions">
+        <button class="btn ${c.done?'btn-ghost':'btn-success'} btn-sm" data-toggle-chapter="${c.id}">${c.done?'Undo':'✓ Done'}</button>
+        <button class="btn btn-ghost btn-sm" data-del-chapter="${c.id}">Del</button>
+      </div>
+    </div>`).join('') : '<div class="empty-state">No chapters added yet</div>';
+}
+document.getElementById('btnAddChapter').addEventListener('click', ()=>{
+  const s = subjectById(manageChaptersSubjectId); if(!s) return;
+  const name = document.getElementById('addChapterInput').value.trim();
+  if(!name){ showToast('Enter a chapter name'); return; }
+  if(!s.chapters) s.chapters=[];
+  s.chapters.push({ id:uid('chap'), name, done:false });
+  saveData(); document.getElementById('addChapterInput').value='';
+  renderChaptersModal(); renderSubjectsList();
+});
 
 /* ---------------------- 6. STUDY PLANNER ---------------------- */
 document.getElementById('btnAddPlan').addEventListener('click', ()=>{
@@ -1252,11 +1376,12 @@ document.getElementById('btnAddTest').addEventListener('click', ()=>{
   const maxMarks = parseFloat(document.getElementById('testMaxMarksInput').value) || 100;
   const date = document.getElementById('testDateInput').value || todayStr();
   const notes = document.getElementById('testNotesInput').value.trim();
+  const tags = document.getElementById('testTagsInput').value.split(',').map(t=>t.trim()).filter(Boolean);
   if(!name){ showToast('Enter test name'); return; }
   if(isNaN(marks)){ showToast('Enter valid marks'); return; }
-  DB.mockTests.push({ id:uid('test'), subjectId, name, date, marks, maxMarks, notes });
+  DB.mockTests.push({ id:uid('test'), subjectId, name, date, marks, maxMarks, notes, tags });
   saveData();
-  document.getElementById('testNameInput').value=''; document.getElementById('testMarksInput').value=''; document.getElementById('testNotesInput').value='';
+  document.getElementById('testNameInput').value=''; document.getElementById('testMarksInput').value=''; document.getElementById('testNotesInput').value=''; document.getElementById('testTagsInput').value='';
   renderAll(); showToast('Mock test recorded');
 });
 
@@ -1283,6 +1408,7 @@ function renderTests(){
       <div class="row-main">
         <div class="row-title"><span class="swatch" style="background:${subjectColor(t.subjectId)}"></span>${escapeHtml(t.name)} <span class="chip">${Math.round(pctOf(t))}%</span></div>
         <div class="row-sub">${subjectName(t.subjectId)} · ${t.marks}/${t.maxMarks} · ${t.date}${t.notes?' · '+escapeHtml(t.notes):''}</div>
+        ${(t.tags&&t.tags.length) ? `<div style="margin-top:6px;">${t.tags.map(tag=>`<span class="chip warn" style="margin-right:4px;">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
       </div>
       <div class="row-actions"><button class="btn btn-ghost btn-sm" data-del-test="${t.id}">Delete</button></div>
     </div>`).join('') : '<div class="empty-state">No mock tests recorded</div>';
@@ -1572,11 +1698,24 @@ function renderConsistencyAndInsights(){
   const subjTotals = DB.subjects.map(s=>({name:s.name, hours: DB.sessions.filter(x=>x.subjectId===s.id).reduce((a,b)=>a+b.hours,0)})).sort((a,b)=>b.hours-a.hours);
   const strongestSubject = subjTotals.length && subjTotals[0].hours>0 ? `${subjTotals[0].name} (${fmtHours(subjTotals[0].hours)}h)` : '--';
 
+  const tagScores = {};
+  DB.mockTests.forEach(t=>{
+    const pct = (t.marks/t.maxMarks)*100;
+    (t.tags||[]).forEach(tag=>{ if(!tagScores[tag]) tagScores[tag]=[]; tagScores[tag].push(pct); });
+  });
+  let weakestTopic = '--';
+  const tagEntries = Object.entries(tagScores).map(([tag,arr])=>[tag, arr.reduce((a,b)=>a+b,0)/arr.length]);
+  if(tagEntries.length){
+    tagEntries.sort((a,b)=>a[1]-b[1]);
+    weakestTopic = `${escapeHtml(tagEntries[0][0])} (${Math.round(tagEntries[0][1])}% avg)`;
+  }
+
   document.getElementById('insightsList').innerHTML = `
     <div class="insight-row"><span class="insight-label">Most Productive Day</span><span class="insight-val">${mostProductiveDay}</span></div>
     <div class="insight-row"><span class="insight-label">Best Study Hour</span><span class="insight-val">${bestHour}</span></div>
     <div class="insight-row"><span class="insight-label">Weakest Day</span><span class="insight-val">${weakestDay}</span></div>
     <div class="insight-row"><span class="insight-label">Strongest Subject</span><span class="insight-val">${strongestSubject}</span></div>
+    <div class="insight-row"><span class="insight-label">Weakest Topic (Tags)</span><span class="insight-val">${weakestTopic}</span></div>
   `;
 }
 
@@ -1714,9 +1853,11 @@ document.querySelectorAll('.tab-btn, .nav-item').forEach(btn=>{ btn.addEventList
 document.body.addEventListener('click', e=>{
   const delSession = e.target.closest('[data-del-session]');
   if(delSession){
-    if(confirm('Delete this session?')){
-      DB.sessions = DB.sessions.filter(s=>s.id!==delSession.dataset.delSession);
-      saveData(); renderAll(); showToast('Session deleted');
+    const idx = DB.sessions.findIndex(s=>s.id===delSession.dataset.delSession);
+    if(idx>-1){
+      const [removed] = DB.sessions.splice(idx,1);
+      saveData(); renderAll();
+      showToast('Session deleted', ()=>{ DB.sessions.splice(idx,0,removed); saveData(); renderAll(); showToast('Session restored'); });
     }
     return;
   }
@@ -1724,6 +1865,21 @@ document.body.addEventListener('click', e=>{
   if(editSubj){ openEditSubject(editSubj.dataset.editSubject); return; }
   const delSubj = e.target.closest('[data-del-subject]');
   if(delSubj){ deleteSubject(delSubj.dataset.delSubject); return; }
+  const manageChap = e.target.closest('[data-manage-chapters]');
+  if(manageChap){ openManageChapters(manageChap.dataset.manageChapters); return; }
+  const toggleChap = e.target.closest('[data-toggle-chapter]');
+  if(toggleChap){
+    const s = subjectById(manageChaptersSubjectId);
+    const c = s && s.chapters && s.chapters.find(x=>x.id===toggleChap.dataset.toggleChapter);
+    if(c){ c.done = !c.done; saveData(); renderChaptersModal(); renderSubjectsList(); }
+    return;
+  }
+  const delChap = e.target.closest('[data-del-chapter]');
+  if(delChap){
+    const s = subjectById(manageChaptersSubjectId);
+    if(s && s.chapters){ s.chapters = s.chapters.filter(x=>x.id!==delChap.dataset.delChapter); saveData(); renderChaptersModal(); renderSubjectsList(); }
+    return;
+  }
 
   const compRev = e.target.closest('[data-complete-revision]');
   if(compRev){
@@ -1733,31 +1889,47 @@ document.body.addEventListener('click', e=>{
   }
   const delRev = e.target.closest('[data-del-revision]');
   if(delRev){
-    if(confirm('Delete this revision task?')){
-      DB.revisions = DB.revisions.filter(x=>x.id!==delRev.dataset.delRevision);
-      saveData(); renderAll(); showToast('Revision deleted');
+    const idx = DB.revisions.findIndex(x=>x.id===delRev.dataset.delRevision);
+    if(idx>-1){
+      const [removed] = DB.revisions.splice(idx,1);
+      saveData(); renderAll();
+      showToast('Revision deleted', ()=>{ DB.revisions.splice(idx,0,removed); saveData(); renderAll(); showToast('Revision restored'); });
     }
     return;
   }
   const compPlan = e.target.closest('[data-complete-plan]');
   if(compPlan){
     const p = DB.plans.find(x=>x.id===compPlan.dataset.completePlan);
-    if(p){ p.status='Completed'; if(!p.actualHours) p.actualHours=p.estHours; saveData(); renderAll(); showToast('Plan item completed'); }
+    if(p){
+      p.status='Completed'; if(!p.actualHours) p.actualHours=p.estHours; saveData(); renderAll();
+      if(confirm(`Add a revision task for "${p.chapter}"?`)){
+        const due = new Date(); due.setDate(due.getDate()+3);
+        DB.revisions.push({ id:uid('rev'), subjectId:p.subjectId, chapter:p.chapter, priority:'Medium', category:'First Revision', dueDate: todayStr(due), completed:false, completedAt:null });
+        saveData(); renderAll();
+        showToast('Plan completed + revision scheduled');
+      } else {
+        showToast('Plan item completed');
+      }
+    }
     return;
   }
   const delPlan = e.target.closest('[data-del-plan]');
   if(delPlan){
-    if(confirm('Delete this plan item?')){
-      DB.plans = DB.plans.filter(x=>x.id!==delPlan.dataset.delPlan);
-      saveData(); renderAll(); showToast('Plan item deleted');
+    const idx = DB.plans.findIndex(x=>x.id===delPlan.dataset.delPlan);
+    if(idx>-1){
+      const [removed] = DB.plans.splice(idx,1);
+      saveData(); renderAll();
+      showToast('Plan item deleted', ()=>{ DB.plans.splice(idx,0,removed); saveData(); renderAll(); showToast('Plan item restored'); });
     }
     return;
   }
   const delTest = e.target.closest('[data-del-test]');
   if(delTest){
-    if(confirm('Delete this test record?')){
-      DB.mockTests = DB.mockTests.filter(x=>x.id!==delTest.dataset.delTest);
-      saveData(); renderAll(); showToast('Test record deleted');
+    const idx = DB.mockTests.findIndex(x=>x.id===delTest.dataset.delTest);
+    if(idx>-1){
+      const [removed] = DB.mockTests.splice(idx,1);
+      saveData(); renderAll();
+      showToast('Test record deleted', ()=>{ DB.mockTests.splice(idx,0,removed); saveData(); renderAll(); showToast('Test record restored'); });
     }
     return;
   }
@@ -1767,7 +1939,7 @@ document.body.addEventListener('click', e=>{
 document.getElementById('historySearchInput').addEventListener('input', renderHistory);
 document.getElementById('historySubjectFilter').addEventListener('change', renderHistory);
 document.getElementById('historySortSelect').addEventListener('change', renderHistory);
-document.querySelectorAll('.modal-overlay').forEach(ov=>{ ov.addEventListener('click', e=>{ if(e.target===ov) ov.classList.remove('show'); }); });
+document.querySelectorAll('.modal-overlay').forEach(ov=>{ ov.addEventListener('click', e=>{ if(e.target===ov){ if(ov.id==='logSessionModal'){ discardPendingSession(); } else { ov.classList.remove('show'); } } }); });
 
 /* ---------------------- MASTER RENDER ---------------------- */
 function renderAll(){
